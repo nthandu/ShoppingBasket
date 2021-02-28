@@ -33,5 +33,9 @@ namespace ShoppingBasket.Services.Models
         /// Total number of items in the basket.
         /// </summary>
         public int NumberOfItems { get; set; }
+
+        public bool VoucherApplied { get; set; }
+
+        public decimal VoucherDiscount { get; set; }
     }
 }

@@ -7,5 +7,7 @@ namespace ShoppingBasket.Services.Models
         public const string VoucherCode50 = "VC50";
         public const string VoucherCode10 = "VC10";
         public const string VoucherCode25 = "VC25";
+        public const string VoucherCodeNotExists = "VCABC";
+        public const string VoucherCode1 = "VC1";
     }
 }

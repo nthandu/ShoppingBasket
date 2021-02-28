@@ -40,7 +40,7 @@ namespace ShoppingBasket.Services.Tests
         }
 
         [TestCase(null)]
-        [TestCase("abc")]
+        [TestCase(Models.Constants.VoucherCodeNotExists)]
         public async Task IsVadlidAsync_Returns_False_WhenVoucherNotExists(string voucherCode)
         {
             bool isValidVoucher = await _sut.IsVadlidAsync(voucherCode);

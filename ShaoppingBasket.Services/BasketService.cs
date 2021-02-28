@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Linq;
+using System.Threading.Tasks;
 using ShoppingBasket.Services.Interfaces;
 using ShoppingBasket.Services.Models;
 
@@ -8,10 +9,11 @@ namespace ShoppingBasket.Services
     public class BasketService : IBasketService
     {
         private static Models.ShoppingBasket _shoppingBasket;
+        private readonly IVoucherService _voucherService;
 
-        public BasketService()
+        public BasketService(IVoucherService voucherService)
         {
-            // Inject any dependencies here such as services for product info, orders, users etc.
+            _voucherService = voucherService;
         }
 
         public Models.ShoppingBasket GetCurrentBasket()
@@ -31,11 +33,13 @@ namespace ShoppingBasket.Services
                 BasketLineItem existingLineItem = GetLineItemBySku(basketItem.ProductSku);
                 if (existingLineItem == null)
                 {
-                    AddLineItemToBasket(basket, new BasketLineItem() {
+                    AddLineItemToBasket(basket, new BasketLineItem()
+                    {
                         Quantity = 1,
                         ProductSku = basketItem.ProductSku,
                         LineItemPrice = basketItem.ItemPrice,
-                        LineItemDiscount = basketItem.ItemDisount
+                        LineItemDiscount = basketItem.ItemDisount,
+                        IsGiftVoucherItem = basketItem.IsGiftVoucherItem
                     });
                 }
                 else
@@ -64,15 +68,83 @@ namespace ShoppingBasket.Services
             // TODO: Implement
         }
 
-        
+
         public void Delete(Guid productSku)
         {
             // TODO: Implement
         }
 
+        public async Task ApplyVoucherAsync(string voucherCode)
+        {
+            var basket = GetCurrentBasket();
+            if (basket.VoucherApplied == true)
+            {
+                return;
+            }
+
+            var voucher = await _voucherService.GetAsync(voucherCode);
+            if (voucher != null &&
+                voucher.ExpiryDate >= DateTime.UtcNow.Date)
+            {
+                var discountToBeApplied = voucher.Discount;
+                if (basket.NumberOfItems > 0)
+                {
+                    var hasNonGiftItems = basket.LineItems.Any(li => li.IsGiftVoucherItem == false);
+
+                    if (hasNonGiftItems)
+                    {
+                        var giftItemsTotal = basket.LineItems.Where(li => li.IsGiftVoucherItem).Sum(li => li.LineItemPrice);
+                        var giftItemDiscount = basket.LineItems.Where(li => li.IsGiftVoucherItem).Sum(li => li.LineItemDiscount);
+
+                        var nonGiftItemsTotal = basket.LineItems.Where(li => li.IsGiftVoucherItem == false).Sum(li => li.LineItemPrice);
+                        var nonGiftItemDiscount = basket.LineItems.Where(li => li.IsGiftVoucherItem == false).Sum(li => li.LineItemDiscount);
+
+                        var discountAfterApplyingVoucher = nonGiftItemDiscount + voucher.Discount;
+
+                        var priceAfterApplyinVoucher = nonGiftItemsTotal - voucher.Discount;
+
+                        if(priceAfterApplyinVoucher < 0)
+                        {
+                            priceAfterApplyinVoucher = 0;
+                        }
+
+                        basket.TotalDiscount = giftItemDiscount  + discountAfterApplyingVoucher;
+                        basket.TotalPrice = giftItemsTotal + priceAfterApplyinVoucher - giftItemDiscount - nonGiftItemDiscount;
+
+                        if (basket.TotalPrice < 0)
+                        {
+                            basket.TotalPrice = 0;
+                        }
+
+                        basket.VoucherApplied = true;
+                        basket.VoucherDiscount = voucher.Discount;
+                    }
+
+                    //var notGiftedLineItemsPrice = basket.
+                    //    LineItems.
+                    //    Where(li => li.IsGiftVoucherItem == false).
+                    //    Sum(li => li.LineItemPrice);
+                    //var maxVoucherDisount = notGiftedLineItemsPrice - voucher.Discount;
+
+                    //if(maxVoucherDisount > 0)
+                    //{
+                    //    basket.TotalDiscount = basket.TotalDiscount + voucher.Discount;
+                    //    basket.TotalPrice = basket.TotalPrice - discountToBeApplied;
+                    //}
+
+                    //if (basket.TotalPrice < 0)
+                    //{
+                    //    basket.TotalPrice = 0;
+                    //}
+                    //basket.VoucherApplied = true;
+                    //basket.VoucherDiscount = voucher.Discount;
+                }
+            }
+        }
+
         private static Models.ShoppingBasket GetBasket()
         {
-            if(_shoppingBasket == null)
+            if (_shoppingBasket == null)
             {
                 _shoppingBasket = new Models.ShoppingBasket();
             }
@@ -86,13 +158,17 @@ namespace ShoppingBasket.Services
 
         private void UpdateBasket(Models.ShoppingBasket basket)
         {
-            if(basket != null &&
+            if (basket != null &&
                 basket.LineItems != null &&
                 basket.LineItems.Any())
             {
                 basket.ActualPrice = basket.LineItems.Sum(item => item.LineItemPrice);
-                basket.TotalDiscount = basket.LineItems.Sum(item => item.LineItemDiscount);
+                basket.TotalDiscount = basket.LineItems.Sum(item => item.LineItemDiscount) + basket.VoucherDiscount;
                 basket.TotalPrice = basket.ActualPrice - basket.TotalDiscount;
+                if (basket.TotalPrice < 0)
+                {
+                    basket.TotalPrice = 0;
+                }
                 basket.NumberOfItems = basket.LineItems.Sum(item => item.Quantity);
             }
         }
